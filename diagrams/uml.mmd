@@ -1,15 +1,81 @@
 classDiagram
-    %% Replace the placeholders below with your actual classes, attributes, methods, and relationships.
-    %% Keep this file updated so it matches your final implementation.
+    %% PawPal+ initial design. Keep this updated so it matches the final implementation.
 
-    class ClassName {
-        +type attribute
-        +method() returnType
+    class Owner {
+        +str name
+        +int day_start_minute
+        +int day_end_minute
+        +int available_minutes
+        +list~Pet~ pets
+        +add_pet(pet Pet) None
+        +available_window() tuple
+        +all_tasks(include_completed bool) list
     }
 
-    class AnotherClass {
-        +type attribute
-        +method() returnType
+    class Pet {
+        +str name
+        +str species
+        +str breed
+        +list~Task~ tasks
+        +add_task(task Task) None
+        +edit_task(task_id str, **changes) Task
+        +remove_task(task_id str) None
     }
 
-    ClassName --> AnotherClass : relationship
+    class Task {
+        +str id
+        +str title
+        +int duration_minutes
+        +Priority priority
+        +Recurrence recurrence
+        +int preferred_start_minute
+        +bool completed
+        +update(**changes) None
+        +mark_complete(done bool) None
+    }
+
+    class Priority {
+        <<enumeration>>
+        LOW
+        MEDIUM
+        HIGH
+    }
+
+    class Recurrence {
+        <<enumeration>>
+        DAILY
+        WEEKLY
+        ONCE
+    }
+
+    class Scheduler {
+        +schedule(owner Owner) dict~Plan~
+        -sort_pairs(pairs list) list
+        -reason(task Task, start int) str
+    }
+
+    class ScheduledItem {
+        +Task task
+        +int start_minute
+        +int end_minute
+        +str reason
+        +time_label() str
+    }
+
+    class Plan {
+        +Pet pet
+        +list~ScheduledItem~ items
+        +list~Task~ unscheduled
+        +int total_minutes
+        +summary() str
+    }
+
+    Owner "1" --> "*" Pet : owns
+    Pet "1" --> "*" Task : has
+    Task --> Priority : uses
+    Task --> Recurrence : uses
+    Scheduler ..> Pet : reads
+    Scheduler ..> Owner : reads constraints
+    Scheduler ..> Plan : produces
+    Plan "1" --> "*" ScheduledItem : contains
+    ScheduledItem --> Task : references

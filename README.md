@@ -93,19 +93,34 @@ Filtering:
 
 ## 🧪 Testing PawPal+
 
-```bash
-# Run the full test suite:
-pytest
+Run the full suite from the project root:
 
-# Run with coverage:
-pytest --cov
+```bash
+python -m pytest
 ```
+
+**What the tests cover** (`tests/test_pawpal.py`, 13 tests split into happy paths and edge cases):
+
+- **Task basics** — `mark_complete()` flips status; `add_task()` grows the pet's task list.
+- **Sorting** — `sort_by_time()` returns tasks chronologically even when added out of order, and handles an empty list.
+- **Filtering** — `filter_tasks()` narrows by pet name and by completion status.
+- **Recurrence** — completing a `DAILY` task queues one due +1 day; a `WEEKLY` task +7 days; a `ONCE` task does not recur.
+- **Conflict detection** — flags a same-pet overlap and an exact-same-time clash; reports nothing when time windows are disjoint.
+- **Scheduling edge cases** — a pet with no tasks yields an empty plan; when time runs out, lower-priority tasks land in `unscheduled` instead of crashing.
 
 Sample test output:
 
 ```
-# Paste your pytest output here
+============================= test session starts =============================
+platform win32 -- Python 3.13.14, pytest-9.0.3, pluggy-1.6.0
+collected 13 items
+
+tests\test_pawpal.py .............                                       [100%]
+
+============================= 13 passed in 0.11s ==============================
 ```
+
+**Confidence level: ★★★★☆ (4/5).** The core behaviors — sorting, filtering, recurrence math, conflict detection, and the greedy scheduler's happy path and over-budget path — are all covered and green. Docking one star because a few areas aren't yet tested: recurrence across month/year boundaries, `preferred_start` times that fall outside the owner's waking window, and multi-day scheduling. See reflection section 4b for what I'd test next.
 
 ## 📐 Smarter Scheduling
 

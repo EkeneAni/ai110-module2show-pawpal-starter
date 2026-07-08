@@ -1,0 +1,93 @@
+classDiagram
+    %% PawPal+ FINAL architecture — matches pawpal_system.py after Phase 3/4.
+    %% Changes vs the initial draft (diagrams/uml.mmd):
+    %%   - Task gained `completed`, `due_date`, and next_occurrence()
+    %%   - Pet gained complete_task() (marks done + queues recurrence)
+    %%   - Scheduler gained sort_by_time(), filter_tasks(), detect_conflicts()
+    %%   - Scheduler.schedule() takes an Owner and returns a Plan per pet
+
+    class Owner {
+        +str name
+        +int day_start_minute
+        +int day_end_minute
+        +int available_minutes
+        +list~Pet~ pets
+        +add_pet(pet Pet) None
+        +available_window() tuple
+        +all_tasks(include_completed bool) list
+    }
+
+    class Pet {
+        +str name
+        +str species
+        +str breed
+        +list~Task~ tasks
+        +add_task(task Task) None
+        +edit_task(task_id str, **changes) Task
+        +remove_task(task_id str) None
+        +complete_task(task_id str) Task
+        +pending_tasks() list~Task~
+    }
+
+    class Task {
+        +str id
+        +str title
+        +int duration_minutes
+        +Priority priority
+        +Recurrence recurrence
+        +int preferred_start_minute
+        +bool completed
+        +date due_date
+        +update(**changes) None
+        +mark_complete(done bool) None
+        +next_occurrence() Task
+    }
+
+    class Priority {
+        <<enumeration>>
+        LOW
+        MEDIUM
+        HIGH
+    }
+
+    class Recurrence {
+        <<enumeration>>
+        ONCE
+        DAILY
+        WEEKLY
+    }
+
+    class Scheduler {
+        +schedule(owner Owner) dict~Plan~
+        +sort_by_time(tasks list~Task~) list~Task~
+        +filter_tasks(owner Owner, pet_name str, completed bool) list
+        +detect_conflicts(owner Owner) list~str~
+        -sort_pairs(pairs list) list
+        -reason(task Task, start int) str
+    }
+
+    class ScheduledItem {
+        +Task task
+        +int start_minute
+        +int end_minute
+        +str reason
+        +time_label() str
+    }
+
+    class Plan {
+        +Pet pet
+        +list~ScheduledItem~ items
+        +list~Task~ unscheduled
+        +int total_minutes
+        +summary() str
+    }
+
+    Owner "1" --> "*" Pet : owns
+    Pet "1" --> "*" Task : has
+    Task --> Priority : uses
+    Task --> Recurrence : uses
+    Pet ..> Task : queues next_occurrence
+    Scheduler ..> Owner : reads tasks & constraints
+    Scheduler ..> Plan : produces per pet
+    Plan "1" --> "*" ScheduledItem : contains
+    ScheduledItem --> Task : references

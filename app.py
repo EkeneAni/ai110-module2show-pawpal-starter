@@ -105,9 +105,29 @@ else:
     st.divider()
     st.subheader("📋 Tasks")
 
+    scheduler = Scheduler()
     pet_names = [p.name for p in owner.pets]
     selected_name = st.selectbox("Choose a pet", pet_names)
     pet = next(p for p in owner.pets if p.name == selected_name)
+
+    # Task overview, sorted chronologically via Scheduler.sort_by_time.
+    if pet.tasks:
+        st.markdown(f"**{pet.name}'s tasks (sorted by time)**")
+        st.table(
+            [
+                {
+                    "Time": time_from_minutes(t.preferred_start_minute).strftime("%H:%M")
+                    if t.preferred_start_minute is not None
+                    else "—",
+                    "Task": t.title,
+                    "Min": t.duration_minutes,
+                    "Priority": LABEL_BY_PRIORITY[t.priority],
+                    "Repeats": t.recurrence.value,
+                    "Done": "✅" if t.completed else "",
+                }
+                for t in scheduler.sort_by_time(pet.tasks)
+            ]
+        )
 
     # Add a task to the selected pet.
     with st.form("add_task", clear_on_submit=True):
@@ -152,7 +172,16 @@ else:
             with st.expander(header):
                 completed = st.checkbox("Completed", value=task.completed, key=f"done_{task.id}")
                 if completed != task.completed:
-                    task.mark_complete(completed)
+                    if completed:
+                        # complete_task also queues the next occurrence for a
+                        # daily/weekly task, so recurrence works in the UI too.
+                        follow_up = pet.complete_task(task.id)
+                        if follow_up is not None:
+                            st.toast(
+                                f"'{task.title}' recurs — queued next for {follow_up.due_date}."
+                            )
+                    else:
+                        task.mark_complete(False)
                     st.rerun()
 
                 ec1, ec2 = st.columns(2)
@@ -210,7 +239,19 @@ if st.button("Generate schedule", type="primary"):
     if not owner.all_tasks():
         st.info("No pending tasks to schedule. Add some tasks (and leave them uncompleted).")
     else:
-        plans = Scheduler().schedule(owner)
+        scheduler = Scheduler()
+
+        # Surface conflicts first: a pet owner should see clashes before the
+        # plan, as a non-blocking heads-up (the scheduler still auto-resolves
+        # them by shifting tasks later).
+        conflicts = scheduler.detect_conflicts(owner)
+        if conflicts:
+            for warning in conflicts:
+                st.warning(warning)
+        else:
+            st.success("No scheduling conflicts detected.")
+
+        plans = scheduler.schedule(owner)
         for plan in plans.values():
             st.markdown(f"#### {plan.pet.name} ({plan.pet.species})")
             st.code(plan.summary(), language="text")

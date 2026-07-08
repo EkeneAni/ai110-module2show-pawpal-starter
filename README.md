@@ -47,23 +47,48 @@ pip install -r requirements.txt
 Sample of the CLI output from running `python main.py`:
 
 ```
-============================================
+====================================================
 Today's Schedule for Jordan
-============================================
+====================================================
 
 Daily plan for Biscuit (dog):
-  08:00 — Morning walk (30 min) [priority: high]
+  08:00 — Feeding (10 min) [priority: high]
       ↳ high priority, placed at preferred time 08:00
-  17:00 — Enrichment play (20 min) [priority: low]
-      ↳ low priority, placed at preferred time 17:00
-  Total planned time: 50 min
+  08:10 — Morning walk (30 min) [priority: high]
+      ↳ high priority, placed in the next open slot
+  18:00 — Evening walk (30 min) [priority: medium]
+      ↳ medium priority, placed at preferred time 18:00
+  Total planned time: 70 min
 
 Daily plan for Mochi (cat):
-  08:30 — Feeding (10 min) [priority: high]
-      ↳ high priority, placed at preferred time 08:30
+  08:40 — Feeding (10 min) [priority: high]
+      ↳ high priority, placed in the next open slot
   12:00 — Litter clean (15 min) [priority: medium]
       ↳ medium priority, placed at preferred time 12:00
   Total planned time: 25 min
+
+----------------------------------------------------
+Sorted by time (Biscuit):
+  08:00  Morning walk     ( 30 min)  high   [pending]
+  08:00  Feeding          ( 10 min)  high   [pending]
+  18:00  Evening walk     ( 30 min)  medium [pending]
+
+----------------------------------------------------
+Conflict check:
+  ⚠ Conflict for Biscuit: 'Morning walk' (08:00) overlaps 'Feeding' (08:00)
+
+----------------------------------------------------
+Recurring tasks:
+  Completing Biscuit's daily 'Morning walk'...
+  -> queued next occurrence: id='b_walk@2026-07-08', due 2026-07-08
+
+----------------------------------------------------
+Filtering:
+  Completed tasks:
+    [Biscuit] 08:00  Morning walk     ( 30 min)  high   [done]
+  Mochi's pending tasks:
+    [Mochi] 12:00  Litter clean     ( 15 min)  medium [pending]
+    [Mochi] 08:30  Feeding          ( 10 min)  high   [pending]
 ```
 
 ## 🧪 Testing PawPal+
@@ -84,14 +109,12 @@ Sample test output:
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
-
 | Feature | Method(s) | Notes |
 |---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+| Task sorting | `Scheduler.sort_by_time`, `Scheduler._sort_pairs` | Times are stored as integer minutes-from-midnight, so a single `sorted()` lambda key orders tasks — no `HH:MM` string parsing. The scheduler itself sorts by priority, then preferred time, then duration. |
+| Filtering | `Scheduler.filter_tasks`, `Owner.all_tasks`, `Pet.pending_tasks` | Filter `(pet, task)` pairs by `pet_name` and/or `completed` status. |
+| Conflict handling | `Scheduler.detect_conflicts` | Pairwise overlap check on preferred time windows; returns human-readable warnings (never raises), covering same-pet and cross-pet clashes. |
+| Recurring tasks | `Task.next_occurrence`, `Pet.complete_task`, `Recurrence` enum | Completing a `DAILY`/`WEEKLY` task auto-queues the next instance, advancing `due_date` with `timedelta` (+1 or +7 days). `ONCE` tasks don't recur. |
 
 ## 📸 Demo Walkthrough
 

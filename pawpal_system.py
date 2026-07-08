@@ -25,7 +25,9 @@ doing" and lets the scheduler share one time budget across all pets.
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from enum import IntEnum, Enum
 
 
@@ -62,6 +64,7 @@ class Task:
     recurrence: Recurrence = Recurrence.DAILY
     preferred_start_minute: int | None = None
     completed: bool = False
+    due_date: date | None = None
 
     def update(self, **changes) -> None:
         """Apply field changes in place (used by Pet.edit_task).
@@ -77,6 +80,32 @@ class Task:
     def mark_complete(self, done: bool = True) -> None:
         """Toggle completion status."""
         self.completed = done
+
+    def next_occurrence(self) -> "Task | None":
+        """Return a fresh, uncompleted Task for the next due date.
+
+        DAILY advances one day, WEEKLY seven; a ONCE task doesn't repeat, so it
+        returns None. The new due date is computed from this task's due_date
+        (or today, if it has none) using timedelta for accurate calendar math.
+        The id keeps a stable base and appends the new date so occurrences don't
+        collide (e.g. 'walk' -> 'walk@2026-07-08').
+        """
+        if self.recurrence == Recurrence.ONCE:
+            return None
+        step = timedelta(days=1 if self.recurrence == Recurrence.DAILY else 7)
+        base_date = self.due_date or date.today()
+        new_due = base_date + step
+        base_id = self.id.split("@")[0]
+        return Task(
+            id=f"{base_id}@{new_due.isoformat()}",
+            title=self.title,
+            duration_minutes=self.duration_minutes,
+            priority=self.priority,
+            recurrence=self.recurrence,
+            preferred_start_minute=self.preferred_start_minute,
+            completed=False,
+            due_date=new_due,
+        )
 
 
 @dataclass
@@ -111,6 +140,20 @@ class Pet:
         """Remove the task with the given id."""
         self._find(task_id)  # raises if missing
         self.tasks = [t for t in self.tasks if t.id != task_id]
+
+    def complete_task(self, task_id: str) -> Task | None:
+        """Mark a task complete and, if it recurs, queue its next occurrence.
+
+        Returns the newly created follow-up Task (for DAILY/WEEKLY tasks) or
+        None (for ONCE tasks, or if the next occurrence already exists).
+        """
+        task = self._find(task_id)
+        task.mark_complete(True)
+        follow_up = task.next_occurrence()
+        if follow_up is None or any(t.id == follow_up.id for t in self.tasks):
+            return None
+        self.tasks.append(follow_up)
+        return follow_up
 
     def pending_tasks(self) -> list[Task]:
         """Tasks not yet completed."""
@@ -265,3 +308,72 @@ class Scheduler:
         else:
             why += ", placed in the next open slot"
         return why
+
+    # --- sorting / filtering / conflict detection ----------------------------
+
+    def sort_by_time(self, tasks: list[Task]) -> list[Task]:
+        """Return the tasks ordered by preferred start time (earliest first).
+
+        Because times are stored as integer minutes-from-midnight, a single
+        lambda key sorts them directly — no 'HH:MM' string parsing needed.
+        Tasks with no preferred time sort to the end.
+        """
+        return sorted(
+            tasks,
+            key=lambda t: t.preferred_start_minute
+            if t.preferred_start_minute is not None
+            else 24 * 60,
+        )
+
+    def filter_tasks(
+        self,
+        owner: Owner,
+        *,
+        pet_name: str | None = None,
+        completed: bool | None = None,
+    ) -> list[tuple[Pet, Task]]:
+        """Return (pet, task) pairs matching the given filters.
+
+        pet_name  -> only tasks belonging to that pet (None = all pets).
+        completed -> True for done tasks, False for pending, None for either.
+        """
+        result: list[tuple[Pet, Task]] = []
+        for pet, task in owner.all_tasks(include_completed=True):
+            if pet_name is not None and pet.name != pet_name:
+                continue
+            if completed is not None and task.completed != completed:
+                continue
+            result.append((pet, task))
+        return result
+
+    def detect_conflicts(self, owner: Owner) -> list[str]:
+        """Find pending tasks whose preferred time windows overlap.
+
+        Lightweight: compares every pair of tasks that have a preferred start
+        time and returns a list of human-readable warning strings (empty if
+        there are none). It never raises — a clash is reported, not fatal.
+        """
+        timed = [
+            (pet, task)
+            for pet, task in owner.all_tasks()
+            if task.preferred_start_minute is not None
+        ]
+        warnings: list[str] = []
+        # itertools.combinations gives every unique task pair once, without the
+        # manual index bookkeeping of a nested range() loop.
+        for (pet_a, task_a), (pet_b, task_b) in itertools.combinations(timed, 2):
+            start_a, start_b = task_a.preferred_start_minute, task_b.preferred_start_minute
+            end_a = start_a + task_a.duration_minutes
+            end_b = start_b + task_b.duration_minutes
+            if start_a < end_b and start_b < end_a:  # windows overlap
+                who = (
+                    pet_a.name
+                    if pet_a.name == pet_b.name
+                    else f"{pet_a.name} and {pet_b.name}"
+                )
+                warnings.append(
+                    f"⚠ Conflict for {who}: "
+                    f"'{task_a.title}' ({_to_time_label(start_a)}) overlaps "
+                    f"'{task_b.title}' ({_to_time_label(start_b)})"
+                )
+        return warnings

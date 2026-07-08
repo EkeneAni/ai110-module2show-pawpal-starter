@@ -123,8 +123,25 @@ pack into the available window) → write tests against `Scheduler` → wire the
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+**The scheduler packs greedily by priority in a single pass, rather than searching for a
+globally optimal timetable.** `Scheduler.schedule()` sorts all pending tasks (highest priority
+first, then earliest preferred time, then shortest) and lays them into one shared timeline,
+placing each task at its preferred start *if that slot is still free*, otherwise in the next
+open slot. It never backtracks. The visible consequence: a task can get bumped past its
+preferred time — in the demo, Biscuit's "Morning walk" (preferred 08:00) is pushed to 08:10
+because the equally-high-priority "Feeding" already took 08:00.
+
+A related, deliberate split: **conflict detection is advisory, not enforced.**
+`Scheduler.detect_conflicts()` reports overlapping *preferred* windows as warnings, but
+`schedule()` still resolves them silently by shifting tasks later. So a "conflict" tells the
+owner two things wanted the same slot; it doesn't block the plan.
+
+**Why this is reasonable here:** the goal is a helpful daily suggestion for one busy owner, not
+a provably optimal solver. Greedy packing is O(n log n), predictable, and easy to explain
+("higher priority wins the slot; ties go to whoever's earlier/shorter") — which matters because
+the app *shows its reasoning*. An optimal packer (e.g. constraint solver) would add a lot of
+complexity for a handful of daily tasks where the greedy answer is already sensible, and its
+choices would be far harder to justify in the per-task "↳ reason" line.
 
 ---
 
